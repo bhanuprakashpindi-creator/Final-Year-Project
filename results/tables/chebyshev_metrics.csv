@@ -1,0 +1,7 @@
+metric,value
+precision,0.442731
+recall,0.492647
+f1,0.466357
+pr_auc,0.525894
+macro_f1,0.719504
+accuracy,0.947970
