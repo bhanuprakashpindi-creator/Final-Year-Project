@@ -468,3 +468,26 @@ The Streamlit dashboard provides a centralized interface for exploring the Ellip
 This integration makes the research project easier to understand, demonstrate and evaluate during the final-year project review.
 
 **Phase 4 Contribution:** Dashboard development, integration, visualization, transaction lookup, model comparison and project documentation.
+## 13. Automated Test Results
+
+The project automated tests were executed using the following command:
+
+```bash
+python -m pytest tests/ -v
+```
+
+**Test execution summary:**
+
+| Item | Result |
+|---|---:|
+| Total tests collected | 33 |
+| Tests passed | 33 |
+| Tests failed | 0 |
+| Warnings | 262 |
+| Execution time | 33.12 seconds |
+
+**Result:** All 33 automated tests passed successfully.
+
+The warnings were related to PyTorch and PyTorch Geometric deprecation notices. They did not cause any test failures.
+
+This confirms that the tested Phase 1, Phase 2, and Phase 3 components passed their existing automated test suite. The Streamlit dashboard should also be checked separately through manual testing.
