@@ -78,7 +78,7 @@ To maintain strict academic integrity during viva defense and project evaluation
 2. **Category B: Our Locally Measured Results:** Trained on a local CPU environment using **100 epochs** and early stopping patience = 25.
 
 | Model Architecture | Published Paper F1 (GPU, 13,000 Epochs) | Published Paper Recall | Published Paper Precision | Our Measured F1 (CPU, 100 Epochs) | Our Measured Recall | Our Measured Precision |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Chebyshev+Lin** | **0.906** (±0.007) | **0.863** (±0.012) | **0.955** (±0.008) | 0.4664 | **0.4926** | 0.4427 |
 | **GATv2+Lin** | 0.887 | 0.842 | 0.938 | 0.3322 | 0.4902 | 0.2513 |
 | **GraphSAGE** | 0.835 | 0.818 | 0.852 | **0.5197** | 0.4363 | **0.6426** |
@@ -185,4 +185,3 @@ def query_transaction(tx_hash: str):
    - *Future Work:* Porting Phase 3 training to a CUDA GPU cluster with `max_epochs=10000` will enable full convergence toward the published 0.906 ceiling.
 2. **Temporal Neighborhood Snapshotting:**
    - The dataset comprises 49 isolated snapshot subgraphs. Dynamic spatio-temporal GNNs (e.g., EvolveGCN) could further capture evolving laundering dynamics across consecutive weeks.
-
