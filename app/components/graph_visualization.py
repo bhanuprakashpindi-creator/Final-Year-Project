@@ -7,7 +7,7 @@ directed payment flow arrows, model prediction overlays, and graph topological s
 
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Set, Tuple
+from typing import Dict, Any, List, Set, Tuple, Optional
 
 import networkx as nx
 import numpy as np
@@ -52,6 +52,18 @@ def load_graph_topology() -> Tuple[np.ndarray, Dict[str, int], Dict[int, str], n
     timesteps = np.load(root / "data" / "processed" / "elliptic_timesteps.npy")
     
     return edge_index, tx_to_idx, idx_to_tx, y, timesteps
+
+
+def extract_incoming_neighbors(target_idx: int, edge_index: np.ndarray) -> np.ndarray:
+    """Extract direct incoming neighbor node indices (fund sources / payers)."""
+    src, dst = edge_index[0], edge_index[1]
+    return np.unique(src[dst == target_idx])
+
+
+def extract_outgoing_neighbors(target_idx: int, edge_index: np.ndarray) -> np.ndarray:
+    """Extract direct outgoing neighbor node indices (fund destinations / payees)."""
+    src, dst = edge_index[0], edge_index[1]
+    return np.unique(dst[src == target_idx])
 
 
 def extract_ego_subgraph(
@@ -141,6 +153,179 @@ def build_hierarchical_positions(
     return pos
 
 
+def build_neighborhood_figure(
+    target_idx: int,
+    selected_tx: str,
+    nodes: Set[int],
+    sub_src: np.ndarray,
+    sub_dst: np.ndarray,
+    pos: Dict[int, Tuple[float, float]],
+    idx_to_tx: Dict[int, str],
+    y_labels: np.ndarray,
+    timesteps: np.ndarray,
+    predictions: Dict[str, Dict[str, Any]],
+    color_mode: str = "Model Consensus Risk",
+    edge_index: Optional[np.ndarray] = None
+) -> go.Figure:
+    """Construct an interactive Plotly figure representing the real transaction neighborhood."""
+    fig = go.Figure()
+    
+    src_all = edge_index[0] if edge_index is not None else sub_src
+    dst_all = edge_index[1] if edge_index is not None else sub_dst
+
+    # Draw Directed Edges & Arrows
+    annotations = []
+    for s, d in zip(sub_src, sub_dst):
+        if s in pos and d in pos:
+            x0, y0 = pos[s]
+            x1, y1 = pos[d]
+            
+            # Line trace
+            fig.add_trace(go.Scatter(
+                x=[x0, x1],
+                y=[y0, y1],
+                mode="lines",
+                line=dict(color="#475569", width=1.8),
+                hoverinfo="none",
+                showlegend=False
+            ))
+            
+            # Directed midpoint arrow
+            annotations.append(dict(
+                ax=x0,
+                ay=y0,
+                x=(x0 + 2 * x1) / 3,
+                y=(y0 + 2 * y1) / 3,
+                xref="x",
+                yref="y",
+                axref="x",
+                ayref="y",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1.2,
+                arrowwidth=1.5,
+                arrowcolor="#94A3B8"
+            ))
+
+    # Categorize nodes
+    category_nodes = {
+        "Target Transaction": [],
+        "Predicted / Actual Illicit": [],
+        "Predicted / Actual Licit": [],
+        "Unknown / Intermediate Node": []
+    }
+
+    colors = {
+        "Target Transaction": "#F59E0B",         # Amber/Gold
+        "Predicted / Actual Illicit": "#EF4444", # Crimson Red
+        "Predicted / Actual Licit": "#10B981",   # Emerald Green
+        "Unknown / Intermediate Node": "#6B7280" # Slate Gray
+    }
+
+    node_data_map = {}
+    for n in nodes:
+        tx_str = idx_to_tx.get(n, str(n))
+        n_label = int(y_labels[n]) if n < len(y_labels) else -1
+        n_ts = int(timesteps[n]) if n < len(timesteps) else -1
+        pred_item = predictions.get(tx_str, None)
+
+        if n == target_idx:
+            cat = "Target Transaction"
+        elif color_mode == "Model Consensus Risk":
+            if pred_item is not None:
+                cat = "Predicted / Actual Illicit" if pred_item["avg_prob"] >= 0.50 else "Predicted / Actual Licit"
+            else:
+                if n_label == 1:
+                    cat = "Predicted / Actual Illicit"
+                elif n_label == 0:
+                    cat = "Predicted / Actual Licit"
+                else:
+                    cat = "Unknown / Intermediate Node"
+        else: # Ground Truth
+            if n_label == 1:
+                cat = "Predicted / Actual Illicit"
+            elif n_label == 0:
+                cat = "Predicted / Actual Licit"
+            else:
+                cat = "Unknown / Intermediate Node"
+
+        category_nodes[cat].append(n)
+        
+        gt_str = "Illicit (1)" if n_label == 1 else ("Licit (0)" if n_label == 0 else "Unknown (-1)")
+        if pred_item:
+            pred_str = f"{pred_item['consensus']} (Illicit Risk: {pred_item['avg_prob']*100:.1f}%)"
+        else:
+            pred_str = "Train / Val Split (Supervised Training Node)" if n_ts <= 41 else "Unlabeled Test Node"
+            
+        role = "Target Transaction (Center)" if n == target_idx else (
+            "Payer (Funding Source)" if n in sub_src[sub_dst == target_idx] else (
+                "Payee (Fund Destination)" if n in sub_dst[sub_src == target_idx] else "Multi-Hop Neighbor"
+            )
+        )
+        
+        in_deg_val = int(np.sum(dst_all == n)) if edge_index is not None else int(np.sum(sub_dst == n))
+        out_deg_val = int(np.sum(src_all == n)) if edge_index is not None else int(np.sum(sub_src == n))
+        
+        tooltip = (
+            f"<b>txId:</b> {tx_str}<br>"
+            f"<b>Role:</b> {role}<br>"
+            f"<b>Timestep:</b> T{n_ts}<br>"
+            f"<b>Ground Truth:</b> {gt_str}<br>"
+            f"<b>Prediction:</b> {pred_str}<br>"
+            f"<b>Global Degree:</b> In={in_deg_val}, Out={out_deg_val}"
+        )
+        node_data_map[n] = tooltip
+
+    for cat_name, n_list in category_nodes.items():
+        if not n_list:
+            continue
+        xs = [pos[n][0] for n in n_list if n in pos]
+        ys = [pos[n][1] for n in n_list if n in pos]
+        texts = [node_data_map[n] for n in n_list if n in pos]
+        
+        is_target = (cat_name == "Target Transaction")
+        fig.add_trace(go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers+text" if is_target else "markers",
+            marker=dict(
+                size=26 if is_target else 18,
+                color=colors[cat_name],
+                symbol="diamond" if is_target else "circle",
+                line=dict(color="#FFFFFF", width=2.5 if is_target else 1.2)
+            ),
+            text=["🎯 Target" if is_target else "" for _ in xs],
+            textposition="top center",
+            hovertext=texts,
+            hoverinfo="text",
+            name=cat_name
+        ))
+
+    color_source_text = "Model Consensus Prediction" if color_mode == "Model Consensus Risk" else "Elliptic Ground-Truth Labels"
+    fig.update_layout(
+        annotations=annotations,
+        title=dict(
+            text=f"Directed Bitcoin Payment Flow &bull; txId {selected_tx} (Colored by: {color_source_text})",
+            font=dict(size=15, color="#1E293B")
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.15,
+            xanchor="center",
+            x=0.5
+        ),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(t=40, b=50, l=20, r=20),
+        height=540,
+        plot_bgcolor="#F8FAFC",
+        paper_bgcolor="#FFFFFF"
+    )
+    return fig
+
+
 def render_graph_visualization():
     """Render bounded real transaction neighborhood graph or honest data-requirement advisory."""
     render_disclaimer()
@@ -191,36 +376,42 @@ def render_graph_visualization():
     # Edge files ARE available
     edge_index, tx_to_idx, idx_to_tx, y_labels, timesteps = load_graph_topology()
     predictions = load_all_predictions()
-    samples = get_sample_transactions()
 
-    st.markdown("#### 🔍 Transaction Selection & Audit Presets")
-    p_col1, p_col2, p_col3, p_col4 = st.columns(4)
-    preset_tx = None
-    with p_col1:
-        if st.button("🚨 Unanimous Illicit", help="Transaction flagged illicit by all models"):
-            preset_tx = samples["unanimous_illicit"][0] if samples["unanimous_illicit"] else "72629711"
-    with p_col2:
-        if st.button("💡 Cheb Caught, RF Missed", help="Chebyshev GNN detected laundering where Random Forest missed"):
-            preset_tx = "106359119"
-    with p_col3:
-        if st.button("✅ Unanimous Licit", help="Transaction classified licit by all models"):
-            preset_tx = "218047773"
-    with p_col4:
-        if st.button("⚖️ High Disagreement", help="Mixed predictions across architectures"):
-            preset_tx = "71450526"
+    # Curated presets with 94992016 featured prominently
+    CURATED_OPTIONS = [
+        "94992016 (Chebyshev Caught, RF Missed - High Risk)",
+        "106359119 (Multi-hop Cascade - Chebyshev Caught)",
+        "72629711 (Unanimous Illicit - 5/5 Models Agree)",
+        "218047773 (Unanimous Licit - 5/5 Clean)",
+        "71450526 (High Architecture Disagreement)",
+        "Custom Transaction ID..."
+    ]
 
-    # Search bar & Preset
-    default_tx = preset_tx if preset_tx else "106359119"
-    selected_tx = st.text_input(
-        "Enter Bitcoin Transaction ID (txId):",
-        value=default_tx,
-        help="Enter any valid transaction ID from the Elliptic dataset (203,769 total nodes)."
-    ).strip()
+    st.markdown("#### 🔍 Select Transaction to Inspect")
+    c_sel1, c_sel2 = st.columns([1.5, 1])
+    
+    with c_sel1:
+        selected_option = st.selectbox(
+            "Quick Preset Selection:",
+            options=CURATED_OPTIONS,
+            index=0,
+            help="Choose from representative transactions or enter any custom transaction ID."
+        )
+
+    if selected_option == "Custom Transaction ID...":
+        with c_sel2:
+            selected_tx = st.text_input(
+                "Enter Bitcoin Transaction ID:",
+                value="94992016",
+                help="Enter any transaction ID present in the Elliptic dataset (203,769 total nodes)."
+            ).strip()
+    else:
+        selected_tx = selected_option.split(" ")[0].strip()
 
     if selected_tx not in tx_to_idx:
         st.error(
             f"Transaction ID `{selected_tx}` not found in the Elliptic dataset index! "
-            f"Please check the ID or try one of the presets above (e.g. `106359119`, `72629711`, `218047773`, `230425980`)."
+            f"Please verify the ID or select one of the curated presets."
         )
         return
 
@@ -239,16 +430,17 @@ def render_graph_visualization():
             help="Choose whether to explore payer inputs, payee outputs, or full bidirectional flow."
         )
     with c_ctrl2:
-        hop_radius = st.slider(
-            "Neighborhood Hops:",
-            min_value=1,
-            max_value=2,
-            value=2,
+        hop_radius = st.radio(
+            "Neighborhood Depth:",
+            options=[1, 2],
+            index=1,
+            horizontal=True,
+            format_func=lambda h: f"{h}-Hop",
             help="1-hop shows direct transaction neighbors; 2-hop reveals multi-hop laundering cascades."
         )
     with c_ctrl3:
         max_nodes = st.slider(
-            "Max Rendered Nodes:",
+            "Max Displayed Nodes:",
             min_value=10,
             max_value=60,
             value=35,
@@ -263,6 +455,13 @@ def render_graph_visualization():
             help="Color nodes by live model predictions or verified ground-truth labels."
         )
 
+    # Compute Global Node Statistics
+    src_all, dst_all = edge_index[0], edge_index[1]
+    direct_in_deg = int(np.sum(dst_all == target_idx))
+    direct_out_deg = int(np.sum(src_all == target_idx))
+    target_timestep = int(timesteps[target_idx])
+    target_label = int(y_labels[target_idx])
+
     # Extract Subgraph
     nodes, sub_src, sub_dst = extract_ego_subgraph(
         target_idx=target_idx,
@@ -271,6 +470,44 @@ def render_graph_visualization():
         direction=direction_mode,
         max_nodes=max_nodes
     )
+
+    # Subgraph Stats KPIs
+    st.markdown("---")
+    st.subheader("📊 Graph Neighborhood Statistics")
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    with m1:
+        st.metric("Selected txId", f"{selected_tx}")
+    with m2:
+        st.metric("Timestep", f"T{target_timestep}")
+    with m3:
+        st.metric("Incoming (In)", f"{direct_in_deg}")
+    with m4:
+        st.metric("Outgoing (Out)", f"{direct_out_deg}")
+    with m5:
+        st.metric("Nodes in View", f"{len(nodes)}")
+    with m6:
+        st.metric("Edges in View", f"{len(sub_src)}")
+    with m7:
+        st.metric("Hop Depth", f"{hop_radius}-Hop")
+
+    # Handling edge cases: Isolated transaction or direction mismatch
+    if direct_in_deg == 0 and direct_out_deg == 0:
+        st.info(
+            f"ℹ️ **Isolated Transaction Notice:** Transaction ID `{selected_tx}` is an isolated node "
+            f"at Timestep T{target_timestep} with 0 incoming and 0 outgoing edges in the Elliptic graph. "
+            f"In Bitcoin transaction data, some transactions lack intra-timestep parent/child relationships. "
+            f"Rendering the single transaction node below without artificial connections."
+        )
+    elif direction_mode == "Out (Destinations / Payees)" and direct_out_deg == 0:
+        st.info(
+            f"ℹ️ Transaction `{selected_tx}` has **0 outgoing transactions** (it is a terminal payment sink). "
+            f"Switch flow direction to **'Both'** or **'In (Sources / Payers)'** to view its incoming funding parents."
+        )
+    elif direction_mode == "In (Sources / Payers)" and direct_in_deg == 0:
+        st.info(
+            f"ℹ️ Transaction `{selected_tx}` has **0 incoming transactions** in this timestep (originating fund source). "
+            f"Switch flow direction to **'Both'** or **'Out (Destinations / Payees)'** to view its outgoing peel chains."
+        )
 
     # Compute Layout Positions
     layout_mode = "Hierarchical Flow (Left-to-Right)"
@@ -283,172 +520,20 @@ def render_graph_visualization():
             G.add_edge(s, d)
         pos = nx.spring_layout(G, seed=42)
 
-    # Compute Node Level Statistics
-    src_all, dst_all = edge_index[0], edge_index[1]
-    direct_in_deg = int(np.sum(dst_all == target_idx))
-    direct_out_deg = int(np.sum(src_all == target_idx))
-    target_timestep = int(timesteps[target_idx])
-    target_label = int(y_labels[target_idx])
-
-    # Subgraph Stats KPIs
-    m1, m2, m3, m4, m5 = st.columns(5)
-    with m1:
-        st.metric("Nodes in View", f"{len(nodes):,}")
-    with m2:
-        st.metric("Directed Edges", f"{len(sub_src):,}")
-    with m3:
-        st.metric("Target In-Degree", f"{direct_in_deg} Payers")
-    with m4:
-        st.metric("Target Out-Degree", f"{direct_out_deg} Payees")
-    with m5:
-        split_name = "Train (1-34)" if target_timestep <= 34 else ("Val (35-41)" if target_timestep <= 41 else "Test (42-49)")
-        st.metric("Timestep / Split", f"T{target_timestep} ({split_name})")
-
-    # Construct Plotly Figure
-    fig = go.Figure()
-
-    # Draw Directed Edges & Arrows
-    annotations = []
-    for s, d in zip(sub_src, sub_dst):
-        if s in pos and d in pos:
-            x0, y0 = pos[s]
-            x1, y1 = pos[d]
-            
-            # Line trace
-            fig.add_trace(go.Scatter(
-                x=[x0, x1],
-                y=[y0, y1],
-                mode="lines",
-                line=dict(color="#475569", width=1.5),
-                hoverinfo="none",
-                showlegend=False
-            ))
-            
-            # Midpoint directional arrow
-            annotations.append(dict(
-                ax=x0,
-                ay=y0,
-                x=(x0 + 2 * x1) / 3,
-                y=(y0 + 2 * y1) / 3,
-                xref="x",
-                yref="y",
-                axref="x",
-                ayref="y",
-                showarrow=True,
-                arrowhead=2,
-                arrowsize=1.2,
-                arrowwidth=1.5,
-                arrowcolor="#94A3B8"
-            ))
-
-    # Node Scatter Traces Grouped by Category for Interactive Legend
-    category_nodes = {
-        "Target Transaction": [],
-        "Predicted / Actual Illicit": [],
-        "Predicted / Actual Licit": [],
-        "Unknown / Intermediate Node": []
-    }
-
-    colors = {
-        "Target Transaction": "#F59E0B",         # Amber/Gold
-        "Predicted / Actual Illicit": "#EF4444", # Crimson Red
-        "Predicted / Actual Licit": "#10B981",   # Emerald Green
-        "Unknown / Intermediate Node": "#6B7280" # Slate Gray
-    }
-
-    node_data_map = {}
-    for n in nodes:
-        tx_str = idx_to_tx.get(n, str(n))
-        n_label = int(y_labels[n])
-        n_ts = int(timesteps[n])
-        pred_item = predictions.get(tx_str, None)
-
-        # Categorize
-        if n == target_idx:
-            cat = "Target Transaction"
-        elif color_mode == "Model Consensus Risk":
-            if pred_item is not None:
-                cat = "Predicted / Actual Illicit" if pred_item["avg_prob"] >= 0.50 else "Predicted / Actual Licit"
-            else:
-                if n_label == 1:
-                    cat = "Predicted / Actual Illicit"
-                elif n_label == 0:
-                    cat = "Predicted / Actual Licit"
-                else:
-                    cat = "Unknown / Intermediate Node"
-        else: # Ground Truth
-            if n_label == 1:
-                cat = "Predicted / Actual Illicit"
-            elif n_label == 0:
-                cat = "Predicted / Actual Licit"
-            else:
-                cat = "Unknown / Intermediate Node"
-
-        category_nodes[cat].append(n)
-        
-        # Tooltip content
-        gt_str = "Illicit (1)" if n_label == 1 else ("Licit (0)" if n_label == 0 else "Unknown (-1)")
-        if pred_item:
-            pred_str = f"{pred_item['consensus']} (Risk: {pred_item['avg_prob']*100:.1f}%)"
-        else:
-            pred_str = "Train / Val Split (Supervised Training Node)" if n_ts <= 41 else "Unlabeled Test Node"
-            
-        role = "Target Transaction" if n == target_idx else ("Payer (In)" if n in sub_src[sub_dst == target_idx] else "Payee (Out)")
-        tooltip = (
-            f"<b>txId:</b> {tx_str}<br>"
-            f"<b>Role:</b> {role}<br>"
-            f"<b>Timestep:</b> {n_ts}<br>"
-            f"<b>Ground Truth:</b> {gt_str}<br>"
-            f"<b>Model Verdict:</b> {pred_str}<br>"
-            f"<b>In-Degree:</b> {int(np.sum(dst_all == n))}, <b>Out-Degree:</b> {int(np.sum(src_all == n))}"
-        )
-        node_data_map[n] = tooltip
-
-    for cat_name, n_list in category_nodes.items():
-        if not n_list:
-            continue
-        xs = [pos[n][0] for n in n_list]
-        ys = [pos[n][1] for n in n_list]
-        texts = [node_data_map[n] for n in n_list]
-        
-        is_target = (cat_name == "Target Transaction")
-        fig.add_trace(go.Scatter(
-            x=xs,
-            y=ys,
-            mode="markers+text" if is_target else "markers",
-            marker=dict(
-                size=24 if is_target else 16,
-                color=colors[cat_name],
-                symbol="diamond" if is_target else "circle",
-                line=dict(color="#FFFFFF", width=2 if is_target else 1)
-            ),
-            text=["🎯 Target" if is_target else "" for _ in xs],
-            textposition="top center",
-            hovertext=texts,
-            hoverinfo="text",
-            name=cat_name
-        ))
-
-    fig.update_layout(
-        annotations=annotations,
-        title=dict(
-            text=f"Real Directed Transaction Subgraph &bull; Bitcoin txId: {selected_tx}",
-            font=dict(size=16, color="#1E293B")
-        ),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.15,
-            xanchor="center",
-            x=0.5
-        ),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        margin=dict(t=40, b=50, l=20, r=20),
-        height=540,
-        plot_bgcolor="#F8FAFC",
-        paper_bgcolor="#FFFFFF"
+    # Build and Render Actual Plotly Figure
+    fig = build_neighborhood_figure(
+        target_idx=target_idx,
+        selected_tx=selected_tx,
+        nodes=nodes,
+        sub_src=sub_src,
+        sub_dst=sub_dst,
+        pos=pos,
+        idx_to_tx=idx_to_tx,
+        y_labels=y_labels,
+        timesteps=timesteps,
+        predictions=predictions,
+        color_mode=color_mode,
+        edge_index=edge_index
     )
 
     st.plotly_chart(fig, width="stretch")
