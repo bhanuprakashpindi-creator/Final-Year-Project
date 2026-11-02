@@ -13,7 +13,7 @@ def render_confusion_matrix():
     """Render interactive confusion matrix heatmaps and diagnostic classification metrics for all 5 models."""
     matrices = load_confusion_matrices()
 
-    st.title("🔲 Forensic Confusion Matrix Inspector")
+    st.title("🎯 Forensic Confusion Matrix Inspector")
     st.markdown(
         "Inspect the classification outcomes across all five models on the held-out test split "
         "(timesteps 42..49; exactly **408 actual illicit** and **8,433 actual licit** transactions)."
@@ -24,7 +24,7 @@ def render_confusion_matrix():
         return
 
     # Visual explanation of confusion matrix terms in simple English
-    with st.expander("ℹ️ Understanding Confusion Matrix Terms (Simple English Guide)", expanded=False):
+    with st.expander("📖 Understanding Confusion Matrix Terms (Simple English Guide)", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(

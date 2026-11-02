@@ -57,8 +57,21 @@ def render_dataset_stats():
     st.markdown(
         """
         In financial fraud and anti-money laundering, positive targets (illicit transactions) 
-        represent a tiny fraction of the network. A naive classifier predicting 'Licit' on everything 
-        would achieve **90.2% accuracy** while catching **0% of financial criminals**.
+        represent a tiny fraction of the network.
+        """
+    )
+
+    st.warning(
+        """
+        **⚠️ Why Overall Accuracy Is Fundamentally Misleading in AML Detection:**
+        
+        - **On the Held-Out Test Split (Timesteps 42–49):** There are **8,433 licit** and **408 illicit** transactions (total: 8,841).
+          A naive dummy classifier predicting *"every transaction is licit"* achieves **95.39% accuracy** ($8,433 / 8,841 = 95.385\%$).
+          However, it detects **0 out of 408 financial criminals** (Illicit Recall = 0.00%, Illicit F1 = 0.00%).
+        - **On the Entire Labeled Dataset (46,564 nodes):** Predicting all licit yields **90.24% accuracy** ($42,019 / 46,564 = 90.237\%$).
+        
+        Therefore, overall accuracy creates a dangerous illusion of efficacy. In regulatory compliance, 
+        **Illicit Precision, Illicit Recall, Illicit F1-Score, and PR-AUC** are the only academically defensible evaluation metrics.
         """
     )
 
@@ -68,7 +81,7 @@ def render_dataset_stats():
         # Donut Chart for All Nodes
         donut_labels = ["Illicit (Class 1)", "Licit (Class 0)", "Unknown / Unlabeled (-1)"]
         donut_values = [illicit_count, licit_count, unknown_count]
-        donut_colors = ["#e74c3c", "#2ecc71", "#95a5a6"]
+        donut_colors = ["#EF4444", "#10B981", "#94A3B8"]
 
         fig_donut = go.Figure(data=[go.Pie(
             labels=donut_labels,
@@ -93,7 +106,7 @@ def render_dataset_stats():
             labels=["Illicit (Class 1)", "Licit (Class 0)"],
             values=[illicit_count, licit_count],
             hole=0.55,
-            marker_colors=["#e74c3c", "#2ecc71"],
+            marker_colors=["#EF4444", "#10B981"],
             textinfo="label+percent",
             hoverinfo="label+value+percent",
         )])
@@ -111,14 +124,14 @@ def render_dataset_stats():
     cat_df = [
         {"Category": "🚨 Illicit (1)", "Node Count": f"{illicit_count:,}", "% of Total": f"{(illicit_count/num_nodes)*100:.2f}%", "% of Labeled": f"{(illicit_count/total_labeled)*100:.2f}%", "Role in Pipeline": "Target of interest (Minority positive class)"},
         {"Category": "✅ Licit (0)", "Node Count": f"{licit_count:,}", "% of Total": f"{(licit_count/num_nodes)*100:.2f}%", "% of Labeled": f"{(licit_count/total_labeled)*100:.2f}%", "Role in Pipeline": "Legitimate transactions (Majority negative class)"},
-        {"Category": "❓ Unknown (-1)", "Node Count": f"{unknown_count:,}", "% of Total": f"{(unknown_count/num_nodes)*100:.2f}%", "% of Labeled": "—", "Role in Pipeline": "Masked from loss; passes messages in GNNs"}
+        {"Category": "⚪ Unknown (-1)", "Node Count": f"{unknown_count:,}", "% of Total": f"{(unknown_count/num_nodes)*100:.2f}%", "% of Labeled": "N/A", "Role in Pipeline": "Masked from loss; passes messages in GNNs"}
     ]
     st.table(cat_df)
 
     st.markdown("---")
 
     # Temporal Splits Breakdown
-    st.header("⏳ Leakage-Free Temporal Partitioning")
+    st.header("⏱️ Leakage-Free Temporal Partitioning")
     st.markdown(
         """
         Random train/test splits cause severe **temporal look-ahead leakage** in financial networks. 
@@ -131,7 +144,7 @@ def render_dataset_stats():
     with t1:
         st.markdown(
             f"""
-            #### 🏋️ Train Split
+            #### 🚂 Train Split
             - **Timesteps:** `{train_s.get('timesteps', '1..34')}`
             - **Total Nodes:** {train_s.get('total_nodes', 136265):,}
             - **Labeled Nodes:** {train_s.get('labeled_nodes', 29894):,}
@@ -169,19 +182,19 @@ def render_dataset_stats():
         name="Licit Nodes",
         x=split_categories,
         y=[train_s.get("licit_count", 26432), val_s.get("licit_count", 7154), test_s.get("licit_count", 8433)],
-        marker_color="#2ecc71"
+        marker_color="#10B981"
     ))
     fig_splits.add_trace(go.Bar(
         name="Illicit Nodes",
         x=split_categories,
         y=[train_s.get("illicit_count", 3462), val_s.get("illicit_count", 675), test_s.get("illicit_count", 408)],
-        marker_color="#e74c3c"
+        marker_color="#EF4444"
     ))
     fig_splits.add_trace(go.Bar(
         name="Unknown / Unlabeled Nodes",
         x=split_categories,
         y=[train_s.get("unknown_count", 106371), val_s.get("unknown_count", 22851), test_s.get("unknown_count", 27983)],
-        marker_color="#bdc3c7"
+        marker_color="#94A3B8"
     ))
     fig_splits.update_layout(
         barmode="stack",
@@ -195,11 +208,11 @@ def render_dataset_stats():
 
     # Leakage Audit Card
     st.markdown("---")
-    st.header("🔒 Zero-Leakage Verification Audit")
+    st.header("🛡️ Zero-Leakage Verification Audit")
     leak = manifest.get("leakage_assessment", {})
     st.success(
         f"✅ **Audit Result: Topologically Leakage-Free**\n\n"
         f"- Total Edges Evaluated: **{leak.get('total_edges_evaluated', 234355):,}**\n"
-        f"- Cross-Split Edges (Train $\\leftrightarrow$ Val $\\leftrightarrow$ Test): **{leak.get('total_cross_split_edges', 0)}**\n"
+        f"- Cross-Split Edges (Train ↔ Val ↔ Test): **{leak.get('total_cross_split_edges', 0)}**\n"
         f"- Status: **{leak.get('findings', 'No edges cross temporal split boundaries.')}**"
     )

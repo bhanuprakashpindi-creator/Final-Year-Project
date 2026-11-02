@@ -103,12 +103,12 @@ def render_sidebar() -> str:
         section = st.radio(
             "Go to section:",
             options=[
-                "📌 Overview & Architecture",
+                "🏛️ Overview & Architecture",
                 "📊 Dataset Statistics & Splits",
                 "📈 Model Comparison & Curves",
-                "🔲 Confusion Matrix Inspector",
+                "🎯 Confusion Matrix Inspector",
                 "🔍 Transaction AML Risk Lookup",
-                "🕸️ Real Graph Neighborhood"
+                "🌐 Real Graph Neighborhood"
             ],
             index=0
         )
@@ -129,14 +129,14 @@ def render_sidebar() -> str:
             )
 
         st.markdown("---")
-        st.markdown("### 📚 Research Reference")
+        st.markdown("### 📖 Research Reference")
         st.caption(
             "Ferretti et al., *IEEE Access*, 2025. "
             "DOI: [10.1109/ACCESS.2025.3552240](https://doi.org/10.1109/ACCESS.2025.3552240)"
         )
 
         st.markdown("---")
-        st.caption("v1.0.0 (Phase 4 Stage 1)")
+        st.caption("v1.0.0 (Phase 4 Final Integrated)")
 
     return section
 
@@ -147,7 +147,7 @@ def render_footer():
         """
         <div class="footer-text">
             <b>AI-Powered Cryptocurrency Anti-Money Laundering Using Graph Neural Networks</b><br>
-            Academic Research Pipeline & Forensic Investigation Dashboard &bull; Phase 4 Stage 1 Implementation<br>
+            Academic Research Pipeline & Forensic Investigation Dashboard &bull; Phase 4 Final Integrated Implementation<br>
             <i>Strict Leakage-Free Temporal Partitioning &bull; Elliptic Bitcoin Dataset &bull; MIT License</i>
         </div>
         """,
@@ -160,17 +160,17 @@ def main():
     active_section = render_sidebar()
 
     # Route navigation
-    if active_section == "📌 Overview & Architecture":
+    if active_section == "🏛️ Overview & Architecture":
         render_overview()
     elif active_section == "📊 Dataset Statistics & Splits":
         render_dataset_stats()
     elif active_section == "📈 Model Comparison & Curves":
         render_model_comparison()
-    elif active_section == "🔲 Confusion Matrix Inspector":
+    elif active_section == "🎯 Confusion Matrix Inspector":
         render_confusion_matrix()
     elif active_section == "🔍 Transaction AML Risk Lookup":
         render_transaction_lookup()
-    elif active_section == "🕸️ Real Graph Neighborhood":
+    elif active_section == "🌐 Real Graph Neighborhood":
         render_graph_visualization()
 
     render_footer()

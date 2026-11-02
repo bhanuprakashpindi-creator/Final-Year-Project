@@ -1,14 +1,33 @@
 """Single Transaction AML Lookup and Risk Scoring Component for the Crypto AML Forensic Dashboard."""
 
+import json
+from pathlib import Path
 import streamlit as st
 import plotly.graph_objects as go
+import numpy as np
 
 try:
-    from app.data_loader import load_all_predictions, get_sample_transactions
+    from app.data_loader import load_all_predictions, get_sample_transactions, get_project_root
     from app.components.overview import render_disclaimer
 except ModuleNotFoundError:
-    from data_loader import load_all_predictions, get_sample_transactions
+    from data_loader import load_all_predictions, get_sample_transactions, get_project_root
     from components.overview import render_disclaimer
+
+
+@st.cache_data(show_spinner=False)
+def load_all_dataset_tx_indices():
+    """Load global mapping of all 203,769 transactions, labels, and timesteps."""
+    root = get_project_root()
+    p_map = root / "data" / "processed" / "elliptic_tx_to_idx.json"
+    p_y = root / "data" / "processed" / "elliptic_y.npy"
+    p_t = root / "data" / "processed" / "elliptic_timesteps.npy"
+    if p_map.exists() and p_y.exists() and p_t.exists():
+        with open(p_map, "r", encoding="utf-8") as f:
+            tx_to_idx = json.load(f)
+        y = np.load(p_y)
+        timesteps = np.load(p_t)
+        return tx_to_idx, y, timesteps
+    return {}, None, None
 
 
 def render_transaction_lookup():
@@ -23,31 +42,32 @@ def render_transaction_lookup():
 
     predictions = load_all_predictions()
     samples = get_sample_transactions()
+    tx_to_idx, y_all, timesteps_all = load_all_dataset_tx_indices()
 
     if not predictions:
         st.error("Transaction prediction CSV files could not be loaded from `results/`.")
         return
 
     # Quick Sample Selector for Evaluators & Defense Viva
-    st.markdown("#### ⚡ Quick Audit Presets (Representative Test Split Transactions)")
+    st.markdown("#### 🎯 Quick Audit Presets (Representative Test Split Transactions)")
     c1, c2, c3, c4 = st.columns(4)
 
     preset_tx = None
     with c1:
         if st.button("🚨 Unanimous Illicit (5/5)", help="All 5 models agree this is illicit"):
-            preset_tx = samples["unanimous_illicit"][0]
+            preset_tx = samples["unanimous_illicit"][0] if samples["unanimous_illicit"] else "72629711"
     with c2:
-        if st.button("🌟 Cheb Caught, RF Missed", help="Chebyshev GNN caught laundering where Random Forest predicted licit"):
-            preset_tx = samples["cheb_caught_rf_missed"][0]
+        if st.button("💡 Cheb Caught, RF Missed", help="Chebyshev GNN caught laundering where Random Forest predicted licit"):
+            preset_tx = "106359119"
     with c3:
         if st.button("✅ Unanimous Licit (5/5)", help="All 5 models agree this is clean"):
-            preset_tx = samples["unanimous_licit"][0]
+            preset_tx = samples["unanimous_licit"][0] if samples["unanimous_licit"] else "218047773"
     with c4:
         if st.button("⚖️ High Model Disagreement", help="Split decisions across architectures"):
-            preset_tx = samples["disagreed"][0]
+            preset_tx = samples["disagreed"][0] if samples["disagreed"] else "71450526"
 
     # Search Bar
-    default_tx = preset_tx if preset_tx else "2376671"
+    default_tx = preset_tx if preset_tx else "106359119"
     search_query = st.text_input(
         "Enter Bitcoin Transaction ID (txId):",
         value=default_tx,
@@ -58,21 +78,38 @@ def render_transaction_lookup():
         st.info("Please enter a transaction ID or click one of the quick presets above.")
         return
 
-    # Check if transaction exists in test set
+    # Check if transaction exists in test set predictions
     if search_query not in predictions:
-        st.error(
-            f"❌ **Transaction ID '{search_query}' Not Found in Test Set!**\n\n"
-            "This transaction is absent from the held-out test split (timesteps 42..49; exactly 8,841 labeled transactions).\n\n"
-            "**Why this happens:** In financial AML research, supervised predictions are only evaluated on the held-out test partition. "
-            "To test a real transaction, try one of the quick preset buttons above or search for: `2376671`, `14782227`, `10403056`, or `268186`."
-        )
-        return
+        # Check if transaction exists anywhere in the 203,769 node graph
+        if tx_to_idx and search_query in tx_to_idx:
+            idx = tx_to_idx[search_query]
+            ts = int(timesteps_all[idx])
+            lbl = int(y_all[idx])
+            split_name = "Train Partition (Timesteps 1–34)" if ts <= 34 else ("Validation Partition (Timesteps 35–41)" if ts <= 41 else "Test Partition (Timesteps 42–49)")
+            lbl_name = "Illicit (1)" if lbl == 1 else ("Licit (0)" if lbl == 0 else "Unknown / Unlabeled (-1)")
+            
+            st.info(
+                f"ℹ️ **Transaction ID `{search_query}` Found in Global Dataset (Node #{idx:,})**\n\n"
+                f"- **Timestep:** `T{ts}`\n"
+                f"- **Split:** `{split_name}`\n"
+                f"- **Ground-Truth Label:** `{lbl_name}`\n\n"
+                f"**Methodological Note:** Under strict temporal partitioning, model performance scorecards and "
+                f"pre-computed multi-model consensus predictions are compiled exclusively for the **held-out test split (Timesteps 42–49; 8,841 labeled transactions)**. "
+                f"To inspect live multi-model predictions, select one of the test presets above or try: `106359119`, `72629711`, `218047773`, or `71450526`."
+            )
+            return
+        else:
+            st.error(
+                f"⚠️ **Transaction ID '{search_query}' Not Found in the Elliptic Dataset!**\n\n"
+                "Please verify the transaction ID. You can click any of the quick preset buttons above or try searching for: `106359119`, `72629711`, `218047773`, or `2376671`."
+            )
+            return
 
     record = predictions[search_query]
 
     # Transaction Forensic Card
     st.markdown("---")
-    st.header(f"🔎 Forensic Audit Dossier: Bitcoin `txId {search_query}`")
+    st.header(f"📁 Forensic Audit Dossier: Bitcoin `txId {search_query}`")
 
     # High-level Risk Summary
     k1, k2, k3, k4 = st.columns(4)
@@ -144,7 +181,7 @@ def render_transaction_lookup():
             record["gat_prob"] * 100,
             record["cheb_prob"] * 100
         ]
-        bar_colors = ["#e74c3c" if p >= 50.0 else "#2ecc71" for p in chart_probs]
+        bar_colors = ["#EF4444" if p >= 50.0 else "#10B981" for p in chart_probs]
 
         fig_risk = go.Figure(data=[go.Bar(
             x=chart_models,

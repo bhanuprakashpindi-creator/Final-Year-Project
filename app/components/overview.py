@@ -22,7 +22,7 @@ def render_overview():
 
     st.markdown(
         """
-        ### 🌐 The Money Laundering Challenge in Cryptocurrency
+        ### 💡 The Money Laundering Challenge in Cryptocurrency
         Cryptocurrency networks such as Bitcoin operate with pseudonymous public addresses. 
         Criminal syndicates and sanctioned entities exploit this structure to execute sophisticated 
         laundering strategies:
@@ -92,12 +92,12 @@ def render_overview():
         )
 
     st.markdown("---")
-    st.header("🔬 Academic Research Reference & Benchmarks")
+    st.header("📖 Academic Research Reference & Benchmarks")
 
     st.markdown(
         """
         This pipeline implements and replicates the foundational research published by:
-        > **Ferretti, S., D’Angelo, G., & Ghini, V. (2025).**  
+        > **Ferretti, S., D'Angelo, G., & Ghini, V. (2025).**  
         > *Enhancing Anti-Money Laundering Frameworks: An Application of Graph Neural Networks in Cryptocurrency Transaction Classification.*  
         > **IEEE Access**, Volume 13, pp. 50204–50218. DOI: [10.1109/ACCESS.2025.3552240](https://doi.org/10.1109/ACCESS.2025.3552240)
         """
@@ -109,7 +109,7 @@ def render_overview():
         | :--- | :---: | :---: |
         | **Hardware Infrastructure** | NVIDIA L40 GPU (48 GB VRAM) | Standard Multi-Core CPU |
         | **Training Epoch Ceiling** | Up to 13,000 Epochs (Patience: 1,000) | 100 Epochs (Patience: 25–40) |
-        | **Best Model Family** | Chebyshev+Lin (`tx+agg_red`) | Random Forest (High Precision) / Chebyshev (High Recall) |
+        | **Best Model Family** | Chebyshev+Lin (`tx+agg_red`) | Random Forest (High Precision: 0.7814) / Chebyshev (High Recall: 0.4926) |
         | **Target Illicit F1-Score** | **0.906** (±0.007) | **0.5893** (RF) / **0.4664** (Chebyshev) |
         | **Target Illicit Recall** | **0.863** (±0.012) | **0.4926** (Chebyshev catches 201 illicit txs) |
         """

@@ -41,7 +41,7 @@ def render_model_comparison():
             "Illicit Recall": f"{r.get('Illicit Recall', 0):.4f}",
             "Illicit F1-Score": f"{r.get('Illicit F1', 0):.4f}",
             "PR-AUC": f"{r.get('PR-AUC', 0):.4f}",
-            "Macro-F1": f"{r.get('Macro-F1', 0):.4f}" if r.get("Macro-F1") is not None else "—",
+            "Macro-F1": f"{r.get('Macro-F1', 0):.4f}" if r.get("Macro-F1") is not None else "N/A",
             "Accuracy": f"{r.get('Accuracy', 0):.4f}",
             "True Positives (TP)": f"{int(r.get('TP', 0))}",
             "False Negatives (FN)": f"{int(r.get('FN', 0))}",
@@ -56,8 +56,8 @@ def render_model_comparison():
     st.header("📊 Interactive Metric Comparisons")
 
     metric_tab1, metric_tab2, metric_tab3 = st.tabs([
-        "🎯 F1, Precision & Recall",
-        "📈 PR-AUC & Accuracy",
+        "📊 F1, Precision & Recall",
+        "🎯 PR-AUC & Accuracy",
         "⚖️ Precision vs. Recall Tradeoff"
     ])
 
@@ -140,7 +140,7 @@ def render_model_comparison():
     st.markdown("---")
 
     # Training Curves Section
-    st.header("📉 GNN Training Dynamics & Convergence (100 Epochs)")
+    st.header("🔄 GNN Training Dynamics & Convergence (100 Epochs)")
     st.markdown(
         "Track the training and validation progression recorded epoch-by-epoch during Phase 3. "
         "Checkpoints were saved on **best validation illicit F1** (monitored on timesteps 35..41)."
