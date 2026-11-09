@@ -1,0 +1,6 @@
+{
+  "name": "CryptoScope AI",
+  "description": "AI-Powered Cryptocurrency Anti-Money Laundering Using Graph Neural Networks on the Elliptic Dataset.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
